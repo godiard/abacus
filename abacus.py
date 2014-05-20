@@ -24,8 +24,8 @@ from gi.repository import Gtk, Gdk
 from gettext import gettext as _
 
 from abacus_window import Abacus, Custom, Suanpan, Soroban, Schety,\
-                          Nepohualtzintzin, Binary, Hex, Decimal, Fractions,\
-                          Caacupe, Cuisenaire
+                          Nepohualtzintzin, Binary, Hexadecimal, Decimal,\
+                          Fractions, Caacupe, Cuisenaire
 
 
 class AbacusMain:
