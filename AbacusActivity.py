@@ -244,6 +244,8 @@ class AbacusActivity(activity.Activity):
         # Start with abacus toolbar expanded and suanpan as default
         self.abacus_toolbar_button.set_expanded(True)
 
+        self.abacus.init()
+
     def _add_abacus_button(self, name, group):
         self.abacus_buttons[name] = radio_factory(
             name,

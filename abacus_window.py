@@ -816,9 +816,10 @@ class Abacus():
                 for sep in self.activity.sep:
                     sep.show()
                     sep.props.draw = True
-        self.canvas.set_size_request(Gdk.Screen.width(), Gdk.Screen.height())
-        self.mode.hide()
-        self.mode.show(reset=True)
+        self.canvas.set_size_request(self.width, self.height)
+
+    def init(self):
+        self.sprites.init()
 
     def select_abacus(self, abacus):
         _logger.debug('abacus_window: selecting %s' % abacus)
@@ -948,6 +949,7 @@ class Abacus():
 
     # Handle the expose-event by drawing
     def __draw_cb(self, canvas, cr):
+        logging.error('DRAW ABACUS')
         self.sprites.redraw_sprites(cr=cr)
 
     def _destroy_cb(self, win, event):
