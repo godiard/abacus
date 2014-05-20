@@ -86,8 +86,9 @@ class Sprites:
 
     def __init__(self, widget):
         ''' Initialize an empty array of sprites '''
-        self.widget = widget
+        self._widget = widget
         self.list = []
+        self._delay = True
 
     def set_cairo_context(self, cr):
         ''' Cairo context may be set or reset after __init__ '''
@@ -148,6 +149,18 @@ class Sprites:
                 intersection = spr.rect.intersect(area)
                 if intersection.width > 0 or intersection.height > 0:
                     spr.draw(cr=cr)
+
+    def set_delay(self, delay):
+        self._delay = delay
+
+    def invalidate_area(self, x, y, width, height):
+        if self._delay:
+            return
+        self._widget.queue_draw_area(x, y, width, height)
+
+    def init(self):
+        self._delay = False
+        self._widget.queue_draw()
 
 
 class Sprite:
@@ -303,11 +316,8 @@ class Sprite:
 
     def inval(self):
         ''' Invalidate a region for gtk '''
-        # self._sprites.window.invalidate_rect(self.rect, False)
-        self._sprites.widget.queue_draw_area(self.rect[0],
-                                             self.rect[1],
-                                             self.rect[2],
-                                             self.rect[3])
+        self._sprites.invalidate_area(self.rect[0], self.rect[1],
+                                      self.rect[2], self.rect[3])
 
     def draw(self, cr=None):
         ''' Draw the sprite (and label) '''
