@@ -79,7 +79,8 @@ def svg_str_to_pixbuf(svg_string):
 import gi
 from gi.repository import Gtk, GdkPixbuf, Gdk
 from gi.repository import Pango, PangoCairo
-
+import cairo
+import logging
 
 class Sprites:
     ''' A class for the list of sprites and everything they share in common '''
@@ -197,7 +198,8 @@ class Sprite:
         self.images[i] = image
         self._dx[i] = dx
         self._dy[i] = dy
-        if isinstance(self.images[i], GdkPixbuf.Pixbuf):
+        if isinstance(self.images[i], GdkPixbuf.Pixbuf) or \
+                isinstance(self.images[i], cairo.ImageSurface) :
             w = self.images[i].get_width()
             h = self.images[i].get_height()
         else:
@@ -336,6 +338,14 @@ class Sprite:
                              self.rect[2],
                              self.rect[3])
                 cr.fill()
+            elif isinstance(img, cairo.ImageSurface):
+                cr.save()
+                cr.translate(self.rect[0] + self._dx[i],
+                             self.rect[1] + self._dy[i])
+                cr.set_source_surface(img)
+                cr.rectangle(0, 0, self.rect[2], self.rect[3])
+                cr.paint()
+                cr.restore()
             else:
                 print 'sprite.draw: source not a pixbuf (%s)' % (type(img))
         if len(self.labels) > 0:

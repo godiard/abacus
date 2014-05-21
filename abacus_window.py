@@ -20,7 +20,8 @@
 
 import gi
 from gi.repository import Gtk, Gdk, GdkPixbuf
-from math import floor, ceil
+from math import floor, ceil, pi
+import cairo
 
 import locale
 
@@ -100,90 +101,6 @@ readable-fractions/681534#681534
         return ''
     return '%s/%s' % (top, bot)
 
-#
-# Utilities for generating artwork as SVG
-#
-
-
-def _svg_str_to_pixbuf(svg_string):
-    ''' Load pixbuf from SVG string '''
-    pl = GdkPixbuf.PixbufLoader.new_with_type('svg')
-    pl.write(svg_string)
-    pl.close()
-    pixbuf = pl.get_pixbuf()
-    return pixbuf
-
-
-def _svg_circle(r, cx, cy, fill, stroke):
-    ''' Returns an SVG circle '''
-    svg_string = '       <circle\n'
-    svg_string += '          r="%f"\n' % (r)
-    svg_string += '          cx="%f"\n' % (cx)
-    svg_string += '          cy="%f"\n' % (cy)
-    svg_string += _svg_style('fill:%s;stroke:%s;' % (fill, stroke))
-    return svg_string
-
-
-def _svg_rect(w, h, rx, ry, x, y, fill, stroke):
-    ''' Returns an SVG rectangle '''
-    svg_string = '       <rect\n'
-    svg_string += '          width="%f"\n' % (w)
-    svg_string += '          height="%f"\n' % (h)
-    svg_string += '          rx="%f"\n' % (rx)
-    svg_string += '          ry="%f"\n' % (ry)
-    svg_string += '          x="%f"\n' % (x)
-    svg_string += '          y="%f"\n' % (y)
-    svg_string += _svg_style('fill:%s;stroke:%s;' % (fill, stroke))
-    return svg_string
-
-
-def _svg_indicator():
-    ''' Returns a wedge-shaped indicator as SVG '''
-    svg_string = '%s %s' % ('<path d="m1.5 1.5 L 18.5 1.5 L 10 13.5 L 1.5',
-                            '1.5 z"\n')
-    svg_string += _svg_style('fill:#ff0000;stroke:#ff0000;stroke-width:3.0;')
-    return svg_string
-
-
-def _svg_bead(fill, stroke, stretch=1.0):
-    ''' Returns a bead-shaped SVG object; scale is used to elongate '''
-    h = 15 + 30 * (stretch - 1.0)
-    h2 = 30 * stretch - 1.5
-    svg_string = '<path d="m 1.5 15 A 15 13.5 90 0 1 15 1.5 L 25 1.5 A 15 \
-13.5 90 0 1 38.5 15 L 38.5 %f A 15 13.5 90 0 1 25 %f L 15 %f A 15 13.5 90 0 \
-1 1.5 %f L 1.5 15 z"\n' % (h, h2, h2, h)
-    svg_string += _svg_style('fill:%s;stroke:%s;stroke-width:1.5' % \
-                             (fill, stroke))
-    return svg_string
-
-
-def _svg_header(w, h, scale, stretch=1.0):
-    ''' Returns SVG header; some beads are elongated (stretch) '''
-    svg_string = '<?xml version="1.0" encoding="UTF-8"'
-    svg_string += ' standalone="no"?>\n'
-    svg_string += '<!-- Created with Python -->\n'
-    svg_string += '<svg\n'
-    svg_string += '   xmlns:svg="http://www.w3.org/2000/svg"\n'
-    svg_string += '   xmlns="http://www.w3.org/2000/svg"\n'
-    svg_string += '   version="1.0"\n'
-    svg_string += '%s%f%s' % ('   width="', w * scale, '"\n')
-    svg_string += '%s%f%s' % ('   height="', h * scale * stretch, '">\n')
-    svg_string += '%s%f%s%f%s' % ('<g\n       transform="matrix(',
-                                  scale, ', 0, 0,', scale, ',0,0)">\n')
-    return svg_string
-
-
-def _svg_footer():
-    ''' Returns SVG footer '''
-    svg_string = '</g>\n'
-    svg_string += '</svg>\n'
-    return svg_string
-
-
-def _svg_style(extras=''):
-    ''' Returns SVG style for shape rendering '''
-    return '%s%s%s' % ('style="', extras, '"/>\n')
-
 
 def _calc_fade(bead_color, fade_color, i, n):
     ''' Fade from bead color to fade color '''
@@ -194,6 +111,154 @@ def _calc_fade(bead_color, fade_color, i, n):
     b = i * float.fromhex('0x' + fade_color[5:]) / n + \
         (n - i) * float.fromhex('0x' + bead_color[5:]) / n
     return '#%02x%02x%02x' % (int(r), int(g), int(b))
+
+
+#
+# Utilities for generating artwork as ImageSurfaces
+#
+
+
+def _html_to_rgb(html_color):
+    """ #RRGGBB -> (r, g, b) tuple (in float format) """
+    # copied from style.py
+
+    html_color = html_color.strip()
+    if html_color[0] == '#':
+        html_color = html_color[1:]
+    if len(html_color) != 6:
+        raise ValueError('input #%s is not in #RRGGBB format' % html_color)
+
+    r, g, b = html_color[:2], html_color[2:4], html_color[4:]
+    r, g, b = [int(n, 16) for n in (r, g, b)]
+    r, g, b = (r / 255.0, g / 255.0, b / 255.0)
+
+    return (r, g, b)
+
+def _image_indicator():
+    ''' Returns a wedge-shaped indicator on a ImageSurface '''
+    width = 20
+    height = 14
+    image_surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+    ctx = cairo.Context(image_surface)
+
+    # use a transparent background
+    ctx.save()
+    ctx.set_operator(cairo.OPERATOR_CLEAR)
+    ctx.fill()
+    ctx.restore()
+
+    # svg_string = '%s %s' % ('<path d="m1.5 1.5 L 18.5 1.5 L 10 13.5 L 1.5',
+    #                        '1.5 z"\n')
+    ctx.move_to(1.5, 1.5)
+    ctx.line_to(18.5, 1.5)
+    ctx.line_to(10, 13.5)
+    ctx.line_to(1.5, 1.5)
+
+    # svg_string += _svg_style('fill:#ff0000;stroke:#ff0000;stroke-width:3.0;')
+    ctx.set_source_rgb(255.0, 0, 0)
+    ctx.set_line_width(3)
+    ctx.fill_preserve()
+    ctx.stroke()
+    image_surface.flush()
+    return image_surface
+
+
+def _image_circle(r, cx, cy, fill, stroke, scale=1.0):
+    r = r * scale
+    width = int(2 * r)
+    height = int(2 * r)
+    image_surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+    ctx = cairo.Context(image_surface)
+
+    # use a transparent background
+    ctx.save()
+    ctx.set_operator(cairo.OPERATOR_CLEAR)
+    ctx.fill()
+    ctx.restore()
+
+    ctx.arc(r, r, r, 0, 2 * pi)
+
+    r, g, b = _html_to_rgb(fill)
+    ctx.set_source_rgb(r, g, b)
+    ctx.fill_preserve()
+
+    r, g, b = _html_to_rgb(stroke)
+    ctx.set_source_rgb(r, g, b)
+    ctx.stroke()
+    image_surface.flush()
+    return image_surface
+
+
+def _image_rect(w, h, rx, ry, x, y, fill, stroke, scale=1.0):
+    """
+    Ignore rx and ry
+    """
+    width = int(w * scale)
+    height = int(h * scale)
+    image_surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+    ctx = cairo.Context(image_surface)
+    ctx.rectangle(0, 0, width, height)
+
+    r, g, b = _html_to_rgb(fill)
+    ctx.set_source_rgb(r, g, b)
+    ctx.fill_preserve()
+
+    r, g, b = _html_to_rgb(stroke)
+    ctx.set_source_rgb(r, g, b)
+    ctx.stroke()
+    image_surface.flush()
+    return image_surface
+
+
+def _draw_round_rect(ctx, x, y, w, h, r):
+    """
+     Copyed from http://www.steveanddebs.org/PyCairoDemo/
+     "Draw a rounded rectangle"
+       A****BQ
+      H      C
+      *      *
+      G      D
+       F****E
+    """
+    ctx.move_to(x + r, y)                          # Move to A
+    ctx.line_to(x + w - r, y)                      # Straight line to B
+    ctx.curve_to(x + w, y, x + w, y, x + w, y + r)
+    # ^ Curve to C, Control points are both at Q
+    ctx.line_to(x + w,y + h - r)                   # Move to D
+    ctx.curve_to(x + w, y + h, x + w, y + h, x + w - r, y + h)
+    # ^ Curve to E
+    ctx.line_to(x + r, y + h)                      # Line to F
+    ctx.curve_to(x, y + h, x, y + h, x, y + h - r) # Curve to G
+    ctx.line_to(x, y + r)                          # Line to H
+    ctx.curve_to(x, y, x, y, x + r, y)             # Curve to A
+    return
+
+
+def _image_bead(fill, stroke, scale, stretch=1.0):
+    ''' Returns a bead-shaped SVG object; scale is used to elongate '''
+    h = int(40 * scale)
+    h2 = int(40 * stretch - 1.5 * scale)
+
+    image_surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, h, h2)
+    ctx = cairo.Context(image_surface)
+
+    # use a transparent background
+    ctx.save()
+    ctx.set_operator(cairo.OPERATOR_CLEAR)
+    ctx.fill()
+    ctx.restore()
+
+    _draw_round_rect(ctx, 0, 0, h, h2, 30)
+
+    r, g, b = _html_to_rgb(fill)
+    ctx.set_source_rgb(r, g, b)
+    ctx.fill_preserve()
+
+    r, g, b = _html_to_rgb(stroke)
+    ctx.set_source_rgb(r, g, b)
+    ctx.stroke()
+    image_surface.flush()
+    return image_surface
 
 
 class Bead():
@@ -331,18 +396,15 @@ class Rod():
         self._bead_count = bead_count
         self.sprites = sprites
 
-        rod = _svg_header(10, frame_height - (FRAME_STROKE_WIDTH * 2),
-                          scale) + \
-              _svg_rect(10, frame_height - (FRAME_STROKE_WIDTH * 2),
-                        0, 0, 0, 0, color, '#404040') + \
-              _svg_footer()
+        rod = _image_rect(10, frame_height - (FRAME_STROKE_WIDTH * 2),
+                        0, 0, 0, 0, color, '#404040', scale)
 
         self.index = i
         self.scale = scale
         if self.spr is None:
-            self.spr = Sprite(sprites, x, y, _svg_str_to_pixbuf(rod))
+            self.spr = Sprite(sprites, x, y, rod)
         else:
-            self.spr.set_image(_svg_str_to_pixbuf(rod))
+            self.spr.set_image(rod)
             self.spr.move((x, y))
 
         self.spr.type = 'frame'
@@ -361,35 +423,23 @@ class Rod():
                 fade = _calc_fade('#FFFFFF', '#FFFF00', i, MAX_FADE_LEVEL)
             else:
                 fade = _calc_fade(bead_color, '#FFFFFF', i, MAX_FADE_LEVEL)
-            self.white_beads.append(_svg_str_to_pixbuf(
-                _svg_header(BEAD_WIDTH, BEAD_HEIGHT, self.scale,
-                            stretch=bead_scale) + \
-                _svg_bead(fade, '#000000', stretch=bead_scale) + \
-                _svg_footer()))
+            self.white_beads.append(
+                _image_bead(fade, '#000000', self.scale, stretch=bead_scale))
 
-        self.black_bead = _svg_str_to_pixbuf(
-                _svg_header(BEAD_WIDTH, BEAD_HEIGHT, self.scale,
-                            stretch=bead_scale) + \
-                _svg_bead('#000000', '#000000', stretch=bead_scale) + \
-                _svg_footer())
+        self.black_bead = _image_bead('#000000', '#000000', self.scale,
+            stretch=bead_scale)
 
         for i in range(len(COLORS)):
-            self.color_beads.append(_svg_str_to_pixbuf(
-                _svg_header(BEAD_WIDTH, BEAD_HEIGHT, self.scale,
-                            stretch=bead_scale) + \
-                _svg_bead(COLORS[i], '#000000', stretch=bead_scale) + \
-                _svg_footer()))
+            self.color_beads.append(_image_bead(COLORS[i], '#000000',
+                                    self.scale,stretch=bead_scale))
 
         bo = (BEAD_WIDTH - BEAD_OFFSET) * self.scale / 2
         ro = (BEAD_WIDTH + 5) * self.scale / 2
         if self.label is None:
-            self.label = Sprite(self.sprites, x - bo, y + self.spr.rect[3],
-                                _svg_str_to_pixbuf(
-                    _svg_header(BEAD_WIDTH, BEAD_HEIGHT, self.scale,
-                                stretch=1.0) + \
-                        _svg_rect(BEAD_WIDTH, BEAD_HEIGHT, 0, 0, 0, 0,
-                                  'none', 'none') + \
-                        _svg_footer()))
+            self.label = Sprite(
+                self.sprites, x - bo, y + self.spr.rect[3],
+                _image_rect(BEAD_WIDTH, BEAD_HEIGHT, 0, 0, 0, 0,
+                            '#000000', '#000000', self.scale))
         else:
             self.label.move((x - bo, y + self.spr.rect[3]))
         self.label.type = 'frame'
@@ -754,11 +804,11 @@ class Abacus():
             self.decimal_point = '.'
 
         size = max(self.width, self.height)
-        background_svg = _svg_header(size, size, 1.0) + \
-            _svg_rect(size, size, 0, 0, 0, 0, '#FFFFFF', '#FFFFFF') + \
-            _svg_footer()
-        background = Sprite(self.sprites, 0, 0,
-                            _svg_str_to_pixbuf(background_svg))
+
+        background = Sprite(
+            self.sprites, 0, 0,
+            _image_rect(size, size, 0, 0, 0, 0, '#FFFFFF', '#FFFFFF',
+                        self.scale))
         background.set_layer(1)
 
         self.decimal = None
@@ -1060,22 +1110,18 @@ class AbacusGeneric():
         # Draw the frame...
         x = (self.abacus.width - (self.frame_width * self.abacus.scale)) / 2
         y = int(BEAD_HEIGHT * 1.5)
-        frame = _svg_header(self.frame_width, self.frame_height,
-                            self.abacus.scale) + \
-                            _svg_rect(self.frame_width, self.frame_height,
-                                      FRAME_STROKE_WIDTH / 2,
-                                      FRAME_STROKE_WIDTH / 2, 0, 0,
-                                      '#000000', '#000000') + \
-                            _svg_rect(self.frame_width - \
-                                          (FRAME_STROKE_WIDTH * 2),
-                                      self.frame_height - \
-                                          (FRAME_STROKE_WIDTH * 2), 0, 0,
-                                      FRAME_STROKE_WIDTH, FRAME_STROKE_WIDTH,
-                                      '#C0C0C0', '#000000') \
-                                      + \
-                            _svg_footer()
-        self.frame = Sprite(self.abacus.sprites, x, y,
-                            _svg_str_to_pixbuf(frame))
+        image1 = _image_rect(self.frame_width, self.frame_height,
+                             FRAME_STROKE_WIDTH / 2,
+                             FRAME_STROKE_WIDTH / 2, 0, 0,
+                             '#000000', '#000000', self.abacus.scale)
+        image2 = _image_rect(self.frame_width - (FRAME_STROKE_WIDTH * 2),
+                             self.frame_height - (FRAME_STROKE_WIDTH * 2),
+                             0, 0, FRAME_STROKE_WIDTH, FRAME_STROKE_WIDTH,
+                             '#C0C0C0', '#000000', self.abacus.scale)
+        self.frame = Sprite(self.abacus.sprites, x, y, image1)
+        self.frame.set_image(image2, i=1,
+                             dx=FRAME_STROKE_WIDTH * self.abacus.scale,
+                             dy=FRAME_STROKE_WIDTH * self.abacus.scale)
         self.frame.type = 'frame'
 
         # Some abaci (Soroban) use a dot to show the units position
@@ -1084,19 +1130,15 @@ class AbacusGeneric():
             dotx = int(self.abacus.width / 2) - 5
             doty = [y + 5, y + self.frame.rect[3] - 15]
             self.dots = []
-            white_dot = _svg_header(10, 10, self.abacus.scale) + \
-                        _svg_circle(5, 5, 5, '#FFFFFF', '#000000') + \
-                        _svg_footer()
+            white_dot = _image_circle(5, 5, 5, '#FFFFFF', '#000000',
+                                      self.abacus.scale)
             self.dots.append(Sprite(self.abacus.sprites,
-                                    dotx, doty[0],
-                                    _svg_str_to_pixbuf(white_dot)))
+                                    dotx, doty[0], white_dot))
             self.dots.append(Sprite(self.abacus.sprites,
-                                    dotx, doty[1],
-                                    _svg_str_to_pixbuf(white_dot)))
+                                    dotx, doty[1], white_dot))
 
-            black_dot = _svg_header(10, 10, self.abacus.scale) + \
-                        _svg_circle(5, 5, 5, '#282828', '#FFFFFF') + \
-                        _svg_footer()
+            black_dot = _image_circle(5, 5, 5, '#282828', '#FFFFFF',
+                                      self.abacus.scale)
             for i in range(int(self.num_rods / 4 - 1)):  # mark 1000s
                 if i % 2 == 0:
                     dot = black_dot
@@ -1104,28 +1146,24 @@ class AbacusGeneric():
                     dot = white_dot
                 self.dots.append(Sprite(self.abacus.sprites,
                                         dotx - 3 * (i + 1) * dx, doty[0],
-                                        _svg_str_to_pixbuf(dot)))
+                                        dot))
                 self.dots.append(Sprite(self.abacus.sprites,
                                         dotx + 3 * (i + 1) * dx, doty[0],
-                                        _svg_str_to_pixbuf(dot)))
+                                        dot))
                 self.dots.append(Sprite(self.abacus.sprites,
                                         dotx - 3 * (i + 1) * dx, doty[1],
-                                        _svg_str_to_pixbuf(dot)))
+                                        dot))
                 self.dots.append(Sprite(self.abacus.sprites,
                                         dotx + 3 * (i + 1) * dx, doty[1],
-                                        _svg_str_to_pixbuf(dot)))
+                                        dot))
             for dot in self.dots:
                 dot.set_layer(DOT_LAYER)
                 dot.type = 'frame'
 
         # Draw the label bar
-        label = _svg_header(self.frame_width, BEAD_HEIGHT,
-                            self.abacus.scale) + \
-                _svg_rect(self.frame_width, BEAD_HEIGHT, 0, 0, 0, 0,
-                          'none', 'none') + \
-                _svg_footer()
-        self.label_bar = Sprite(self.abacus.sprites, x, 0,
-                                _svg_str_to_pixbuf(label))
+        label = _image_rect(self.frame_width, BEAD_HEIGHT, 0, 0, 0, 0,
+                          '#FFFFFF', '#FFFFFF', self.abacus.scale)
+        self.label_bar = Sprite(self.abacus.sprites, x, 0, label)
         self.label_bar.type = 'frame'
         self.label_bar.set_label_attributes(24, rescale=False)
         self.label_bar.set_label_color('black')
@@ -1139,30 +1177,23 @@ class AbacusGeneric():
         self.draw_rods_and_beads(x, y)
 
         # Draw the dividing bar...
-        bar = _svg_header(self.frame_width - (FRAME_STROKE_WIDTH * 2),
-                          BEAD_HEIGHT, self.abacus.scale) + \
-              _svg_rect(self.frame_width - (FRAME_STROKE_WIDTH * 2),
-                        BEAD_HEIGHT, 0, 0, 0, 0, '#000000', '#000000') + \
-              _svg_footer()
+        bar = _image_rect(self.frame_width - (FRAME_STROKE_WIDTH * 2),
+                        BEAD_HEIGHT, 0, 0, 0, 0, '#000000', '#000000',
+                        self.abacus.scale)
         if self.top_beads > 0:
             self.bar = Sprite(self.abacus.sprites, x,
                               y + (self.top_beads + 2) * BEAD_HEIGHT * \
-                                  self.abacus.scale,
-                              _svg_str_to_pixbuf(bar))
+                                  self.abacus.scale, bar)
         else:
             self.bar = Sprite(self.abacus.sprites, x,
-                              y - FRAME_STROKE_WIDTH * self.abacus.scale,
-                              _svg_str_to_pixbuf(bar))
+                              y - FRAME_STROKE_WIDTH * self.abacus.scale, bar)
         self.bar.type = 'frame'
 
         # and finally, the mark.
-        mark = _svg_header(20, 15, self.abacus.scale) + \
-               _svg_indicator() + \
-               _svg_footer()
         dx = (BEAD_WIDTH + BEAD_OFFSET) * self.abacus.scale
         self.mark = Sprite(self.abacus.sprites, x + (self.num_rods - 1) * dx,
                            y - (FRAME_STROKE_WIDTH / 2) * self.abacus.scale,
-                           _svg_str_to_pixbuf(mark))
+                           _image_indicator())
         self.mark.type = 'mark'
 
     def draw_rods_and_beads(self, x=None, y=None):
