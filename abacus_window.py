@@ -18,8 +18,7 @@
 # along with the Abacus Activity.  If not, see <http://www.gnu.org/licenses/>.
 
 
-import gi
-from gi.repository import Gtk, Gdk, GdkPixbuf
+from gi.repository import Gdk
 from math import floor, ceil, pi
 import cairo
 
@@ -1001,10 +1000,6 @@ class Abacus():
     def __draw_cb(self, canvas, cr):
         logging.error('DRAW ABACUS')
         self.sprites.redraw_sprites(cr=cr)
-
-    def _destroy_cb(self, win, event):
-        ''' Callback to handle quit '''
-        gtk.main_quit()
 
     def generate_label(self, sum_only=False):
         ''' The complexity below is to make the label as simple as possible '''

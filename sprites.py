@@ -76,11 +76,9 @@ def svg_str_to_pixbuf(svg_string):
 
 '''
 
-import gi
-from gi.repository import Gtk, GdkPixbuf, Gdk
+from gi.repository import GdkPixbuf, Gdk
 from gi.repository import Pango, PangoCairo
 import cairo
-import logging
 
 class Sprites:
     ''' A class for the list of sprites and everything they share in common '''
